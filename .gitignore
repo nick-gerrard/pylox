@@ -1,0 +1,5 @@
+__pycache__
+.claude/
+pylox/__pycache__
+test*
+print_ast.py

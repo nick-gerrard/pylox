@@ -1,0 +1,160 @@
+from dataclasses import dataclass
+from pylox.token import Token, TokenType
+from pylox.expr import Literal, Unary, Binary, Grouping
+from pylox.stmt import Stmt, Print, Expression
+from pylox.error_reporter import token_error
+from typing import List
+
+
+@dataclass
+class Parser:
+    tokens: List[Token]
+    current: int = 0
+
+    def parse(self):
+        statements = []
+        while not self._is_at_end():
+            statements.append(self.statement())
+        return statements
+
+
+    def _is_at_end(self):
+        if self._peek().token_type != TokenType.EOF:
+            return False
+        return True
+
+
+    def _match(self, *token_types):
+        for token_type in token_types:
+            if self._check(token_type):
+                self._advance()
+                return True
+        return False
+
+    def _check(self, token_type):
+        if self._is_at_end():
+            return False
+        if self._peek().token_type == token_type:
+            return True
+        return False
+        
+    def _advance(self):
+        token = self.tokens[self.current]
+        self.current += 1
+        return token
+
+    def _peek(self):
+        return self.tokens[self.current]
+
+    def _previous(self):
+        return self.tokens[self.current - 1]
+
+    class ParseError(Exception):
+        def __init__(self, token, message):
+            self.token = token
+            self.message = message
+            super().__init__(message)
+
+    def _error(self, token, message):
+        token_error(token, message)
+        return self.ParseError(token, message)
+
+    def _synchronize(self):
+        self._advance()
+
+        while not self._is_at_end():
+            if self._previous().token_type == TokenType.SEMICOLON:
+                return
+
+            match self._peek().token_type:
+                case TokenType.CLASS | TokenType.FUN | TokenType.VAR | TokenType.FOR | TokenType.IF | TokenType.WHILE | TokenType.PRINT | TokenType.RETURN:
+                    return
+
+            self._advance()
+
+                
+
+    def _consume(self, token_type, message=None):
+        if self._peek().token_type == token_type:
+            return self._advance()
+        else:
+            raise self._error(self._peek(), message)
+
+    def _print_statement(self):
+        value = self.expression()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after value.")
+        return Print(value)
+
+    def _expression_statement(self):
+        expr = self.expression()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after value.")
+        return Expression(expr)
+
+    def primary(self):
+        if self._match(TokenType.FALSE): return Literal(False)
+        if self._match(TokenType.TRUE): return Literal(True)
+        if self._match(TokenType.NIL): return Literal(None)
+
+        if self._match(TokenType.NUMBER, TokenType.STRING):
+            return Literal(self._previous().literal)
+
+        if self._match(TokenType.LEFT_PAREN):
+            expr = self.expression()
+            self._consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.")
+            return Grouping(expr)
+
+        raise self._error(self._peek(), "Expect expression.")
+
+    def unary(self):
+        if self._match(TokenType.BANG, TokenType.MINUS):
+            operator = self._previous()
+            right = self.unary()
+            return Unary(operator, right)
+        return self.primary()
+
+    def factor(self):
+        expr = self.unary()
+        while self._match(TokenType.SLASH, TokenType.STAR):
+            operator = self._previous()
+            right = self.unary()
+            expr = Binary(expr, operator, right)
+        return expr
+
+    def term(self):
+        expr = self.factor()
+        while self._match(TokenType.MINUS, TokenType.PLUS):
+            operator = self._previous()
+            right = self.factor()
+            expr = Binary(expr, operator, right)
+        return expr
+
+    def comparison(self):
+        expr = self.term()
+        while self._match(
+            TokenType.GREATER,
+            TokenType.GREATER_EQUAL,
+            TokenType.LESS,
+            TokenType.LESS_EQUAL
+            ):
+            operator = self._previous()
+            right = self.term()
+            expr = Binary(expr, operator, right)
+        return expr
+
+    def equality(self):
+        expr = self.comparison()
+        while self._match(TokenType.BANG_EQUAL, TokenType.EQUAL_EQUAL):
+            operator = self._previous()
+            right = self.comparison()
+            expr = Binary(expr, operator, right)
+        return expr
+
+    def expression(self):
+        return self.equality()
+
+    def statement(self):
+        if self._match(TokenType.PRINT): return self._print_statement()
+        return self._expression_statement()
+
+
+
