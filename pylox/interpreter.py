@@ -1,13 +1,15 @@
 from typing import Any, List
-from pylox.expr import Expr, Literal, Grouping, Unary, Binary
-from pylox.stmt import Stmt, Print, Expression
+from pylox.expr import Expr, Literal, Grouping, Unary, Binary, Variable, Assign
+from pylox.stmt import Stmt, Print, Expression, Var, Block
 from pylox.token import TokenType, Token
 from pylox.runtime_error import RuntimeError
 from pylox.error_reporter import runtime_error
+from pylox.environment import Environment
 
 
 class Interpreter:
-
+    def __init__(self):
+        self.environment = Environment()
     # --- Public interface ---
 
     def interpret(self, statements: List[Stmt]):
@@ -21,6 +23,15 @@ class Interpreter:
 
     def _execute(self, stmt: Stmt):
         stmt.accept(self)
+
+    def _execute_block(self, statements: List[Stmt], environment: Environment):
+        previous = self.environment
+        try:
+            self.environment = environment
+            for statement in statements:
+                self._execute(statement)
+        finally:
+            self.environment = previous
 
     def _evaluate(self, expr: Expr) -> Any:
         return expr.accept(self)
@@ -63,6 +74,28 @@ class Interpreter:
     def visit_print(self, stmt: Print):
         value = self._evaluate(stmt.expression)
         print(self._stringify(value))
+
+    def visit_var_stmt(self, stmt: Var):
+        value = None
+        if stmt.initializer:
+            value = self._evaluate(stmt.initializer)
+        self.environment.define(stmt.name.lexeme, value)
+        return
+
+    def visit_var_expression(self, expr: Variable):
+        return self.environment.get(expr.name)
+
+    def visit_var_assignment(self, expr: Assign):
+        value = self._evaluate(expr.value)
+        self.environment.assign(expr.name, value)
+        return value
+
+    def visit_block_stmt(self, stmt: Block):
+        self._execute_block(stmt.statements, Environment(self.environment))
+        return None
+
+
+        
 
     # --- Expression visitors ---
 

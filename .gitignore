@@ -3,3 +3,4 @@ __pycache__
 pylox/__pycache__
 test*
 print_ast.py
+CLAUDE.md

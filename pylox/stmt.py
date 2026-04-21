@@ -20,3 +20,18 @@ class Print(Stmt):
 
     def accept(self, visitor):
         return visitor.visit_print(self)
+
+@dataclass
+class Var(Stmt):
+    name: Token
+    initializer: Expr
+
+    def accept(self, visitor):
+        return visitor.visit_var_stmt(self)
+
+@dataclass
+class Block(Stmt):
+    statements: List[Stmt]
+
+    def accept(self, visitor):
+        return visitor.visit_block_stmt(self)

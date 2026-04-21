@@ -24,6 +24,21 @@ class Unary(Expr):
         return visitor.visit_unary(self)
 
 @dataclass
+class Variable(Expr):
+    name: Token
+
+    def accept(self, visitor):
+        return visitor.visit_var_expression(self)
+
+@dataclass
+class Assign(Expr):
+    name: Token
+    value: Expr
+
+    def accept(self, visitor):
+        return visitor.visit_var_assignment(self)
+
+@dataclass
 class Grouping(Expr):
     expression: Expr
 

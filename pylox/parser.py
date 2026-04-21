@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pylox.token import Token, TokenType
-from pylox.expr import Literal, Unary, Binary, Grouping
-from pylox.stmt import Stmt, Print, Expression
+from pylox.expr import Literal, Unary, Binary, Grouping, Variable, Assign
+from pylox.stmt import Stmt, Print, Expression, Var, Block
 from pylox.error_reporter import token_error
 from typing import List
 
@@ -14,7 +14,7 @@ class Parser:
     def parse(self):
         statements = []
         while not self._is_at_end():
-            statements.append(self.statement())
+            statements.append(self.declaration())
         return statements
 
 
@@ -90,6 +90,24 @@ class Parser:
         self._consume(TokenType.SEMICOLON, "Expect ';' after value.")
         return Expression(expr)
 
+    def _block(self):
+        statements = []
+
+        while not self._check(TokenType.RIGHT_BRACE) and not self._is_at_end():
+            statements.append(self.declaration())
+
+        self._consume(TokenType.RIGHT_BRACE, "Expect '}' after block.")
+        return statements
+
+    def _var_declaration(self):
+        name = self._consume(TokenType.IDENTIFIER, "Expect variable name.")
+        initializer: Expr = None
+
+        if self._match(TokenType.EQUAL):
+            initializer = self.expression()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after var declaration.")
+        return Var(name, initializer)
+
     def primary(self):
         if self._match(TokenType.FALSE): return Literal(False)
         if self._match(TokenType.TRUE): return Literal(True)
@@ -97,6 +115,9 @@ class Parser:
 
         if self._match(TokenType.NUMBER, TokenType.STRING):
             return Literal(self._previous().literal)
+
+        if self._match(TokenType.IDENTIFIER):
+            return Variable(self._previous())
 
         if self._match(TokenType.LEFT_PAREN):
             expr = self.expression()
@@ -149,12 +170,38 @@ class Parser:
             expr = Binary(expr, operator, right)
         return expr
 
+    def assignment(self):
+        expr = self.equality()
+
+        if self._match(TokenType.EQUAL):
+            equals = self._previous()
+            value = self.assignment()
+
+            if isinstance(expr, Variable):
+                name = expr.name
+                return Assign(name, value)
+            self._error(equals, "Invalid assignment target.")
+        return expr
+
     def expression(self):
-        return self.equality()
+        return self.assignment()
 
     def statement(self):
-        if self._match(TokenType.PRINT): return self._print_statement()
+        if self._match(TokenType.PRINT): 
+            return self._print_statement()
+        if self._match(TokenType.LEFT_BRACE): 
+            return Block(self._block())
+
         return self._expression_statement()
+
+    def declaration(self):
+        try:
+            if self._match(TokenType.VAR):
+                return self._var_declaration()
+            return self.statement()
+        except self.ParseError as e:
+            self._synchronize()
+            return None
 
 
 
