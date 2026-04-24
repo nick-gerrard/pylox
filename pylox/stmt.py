@@ -18,6 +18,16 @@ class Expression(Stmt):
 
 
 @dataclass
+class Function(Stmt):
+    name: Token
+    params: list[Token]
+    body: list[Stmt]
+
+    def accept(self, visitor):
+        return visitor.visit_function_stmt(self)
+
+
+@dataclass
 class Print(Stmt):
     expression: Expr
 

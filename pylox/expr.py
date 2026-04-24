@@ -19,6 +19,16 @@ class Binary(Expr):
 
 
 @dataclass
+class Call(Expr):
+    callee: Expr
+    paren: Token
+    arguments: list[Expr]
+
+    def accept(self, visitor):
+        return visitor.visit_call_expr(self)
+
+
+@dataclass
 class Unary(Expr):
     operator: Token
     right: Expr
@@ -85,4 +95,3 @@ class AstPrinter:
 
     def visit_literal(self, expr: Literal):
         return f"{expr.value}"
-

@@ -1,15 +1,42 @@
 from typing import Any, List
-from pylox.expr import Expr, Literal, Grouping, Unary, Binary, Variable, Assign, Logical
-from pylox.stmt import Stmt, Print, Expression, Var, Block, If, While
+import time
+from pylox.expr import (
+    Expr,
+    Literal,
+    Grouping,
+    Unary,
+    Binary,
+    Variable,
+    Assign,
+    Logical,
+    Call,
+)
+from pylox.stmt import Stmt, Print, Expression, Var, Block, If, While, Function
 from pylox.token import TokenType, Token
 from pylox.runtime_error import RuntimeError
 from pylox.error_reporter import runtime_error
 from pylox.environment import Environment
+from pylox.lox_callable import LoxCallable
+from pylox.lox_function import LoxFunction
+
+
+class ClockCallable(LoxCallable):
+    def arity(self):
+        return 0
+
+    def call(self, _interpreter, _arguments: list):  # type: ignore
+        return time.time()
+
+    def __str__(self):
+        return "<native fn>"
 
 
 class Interpreter:
     def __init__(self):
-        self.environment = Environment()
+        self.globals = Environment()
+        self.environment = self.globals
+
+        self.globals.define("clock", ClockCallable())
 
     # --- Public interface ---
 
@@ -71,6 +98,11 @@ class Interpreter:
 
     def visit_expression(self, stmt: Expression):
         self._evaluate(stmt.expression)
+
+    def visit_function_stmt(self, stmt: Function):
+        function: LoxFunction = LoxFunction(stmt)
+        self.environment.define(stmt.name.lexeme, function)
+        return None
 
     def visit_if_stmt(self, stmt: If):
         if self._is_truthy(self._evaluate(stmt.condition)):
@@ -175,3 +207,20 @@ class Interpreter:
             case TokenType.EQUAL_EQUAL:
                 return self._is_equal(left, right)
         return None
+
+    def visit_call_expr(self, expr: Call) -> Any:
+        callee = self._evaluate(expr.callee)
+        if not isinstance(callee, LoxCallable):
+            raise RuntimeError(expr.paren, "Can only call functions and classes.")
+
+        arguments = []
+        for argument in expr.arguments:
+            arguments.append(self._evaluate(argument))
+
+        if len(arguments) != callee.arity():
+            raise RuntimeError(
+                expr.paren,
+                f"expected {callee.arity()} arguments but got {len(arguments)}.",
+            )
+
+        return callee.call(self, arguments)

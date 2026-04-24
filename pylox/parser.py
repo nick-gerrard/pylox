@@ -1,7 +1,17 @@
 from dataclasses import dataclass
 from pylox.token import Token, TokenType
-from pylox.expr import Expr, Literal, Unary, Binary, Grouping, Variable, Assign, Logical
-from pylox.stmt import Stmt, Print, Expression, Var, Block, If, While
+from pylox.expr import (
+    Expr,
+    Literal,
+    Unary,
+    Binary,
+    Grouping,
+    Variable,
+    Assign,
+    Logical,
+    Call,
+)
+from pylox.stmt import Stmt, Print, Expression, Var, Block, If, While, Function
 from pylox.error_reporter import token_error
 from typing import List
 
@@ -95,6 +105,24 @@ class Parser:
         self._consume(TokenType.SEMICOLON, "Expect ';' after value.")
         return Expression(expr)
 
+    def _function(self, kind: str):
+        name = self._consume(TokenType.IDENTIFIER, f"Expect {kind} name.")
+        self._consume(TokenType.LEFT_PAREN, f"Expect '(' after {kind} name.")
+
+        parameters = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            parameters.append(self._consume(TokenType.IDENTIFIER))
+            while self._match(TokenType.COMMA):
+                if len(parameters) > 255:
+                    self._error(self._peek(), "Can't have more than 255 parameters.")
+                parameters.append(
+                    self._consume(TokenType.IDENTIFIER, "Expect parameter name.")
+                )
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after parameters.")
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before function body.")
+        body = self._block()
+        return Function(name, parameters, body)
+
     def _block(self):
         statements = []
 
@@ -153,12 +181,34 @@ class Parser:
 
         raise self._error(self._peek(), "Expect expression.")
 
+    def finish_call(self, callee):
+        arguments = []
+        if not self._check(TokenType.RIGHT_PAREN):
+            arguments.append(self.expression())
+            while self._match(TokenType.COMMA):
+                arguments.append(self.expression())
+                if len(arguments) > 255:
+                    self._error(self._peek(), "Can't have more than 255 arguments.")
+
+        paren = self._consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.")
+        return Call(callee, paren=paren, arguments=arguments)
+
+    def call(self):
+        expr: Expr = self.primary()
+
+        while True:
+            if self._match(TokenType.LEFT_PAREN):
+                expr = self.finish_call(expr)
+            else:
+                break
+        return expr
+
     def unary(self):
         if self._match(TokenType.BANG, TokenType.MINUS):
             operator = self._previous()
             right = self.unary()
             return Unary(operator, right)
-        return self.primary()
+        return self.call()
 
     def factor(self):
         expr = self.unary()
@@ -278,6 +328,8 @@ class Parser:
 
     def declaration(self):
         try:
+            if self._match(TokenType.FUN):
+                return self._function("function")
             if self._match(TokenType.VAR):
                 return self._var_declaration()
             return self.statement()
