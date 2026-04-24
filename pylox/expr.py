@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from pylox.token import Token
 from typing import Any
 
+
 class Expr:
     def accept(self, visitor):
         pass
+
 
 @dataclass
 class Binary(Expr):
@@ -15,6 +17,7 @@ class Binary(Expr):
     def accept(self, visitor):
         return visitor.visit_binary(self)
 
+
 @dataclass
 class Unary(Expr):
     operator: Token
@@ -23,12 +26,14 @@ class Unary(Expr):
     def accept(self, visitor):
         return visitor.visit_unary(self)
 
+
 @dataclass
 class Variable(Expr):
     name: Token
 
     def accept(self, visitor):
         return visitor.visit_var_expression(self)
+
 
 @dataclass
 class Assign(Expr):
@@ -38,6 +43,7 @@ class Assign(Expr):
     def accept(self, visitor):
         return visitor.visit_var_assignment(self)
 
+
 @dataclass
 class Grouping(Expr):
     expression: Expr
@@ -45,12 +51,23 @@ class Grouping(Expr):
     def accept(self, visitor):
         return visitor.visit_grouping(self)
 
+
 @dataclass
 class Literal(Expr):
     value: Any
 
     def accept(self, visitor):
         return visitor.visit_literal(self)
+
+
+@dataclass
+class Logical(Expr):
+    left: Expr
+    operator: Token
+    right: Expr
+
+    def accept(self, visitor):
+        return visitor.visit_logical(self)
 
 
 class AstPrinter:
@@ -68,3 +85,4 @@ class AstPrinter:
 
     def visit_literal(self, expr: Literal):
         return f"{expr.value}"
+

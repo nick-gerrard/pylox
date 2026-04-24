@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pylox.token import Token, TokenType
-from pylox.expr import Literal, Unary, Binary, Grouping, Variable, Assign
-from pylox.stmt import Stmt, Print, Expression, Var, Block
+from pylox.expr import Expr, Literal, Unary, Binary, Grouping, Variable, Assign, Logical
+from pylox.stmt import Stmt, Print, Expression, Var, Block, If, While
 from pylox.error_reporter import token_error
 from typing import List
 
@@ -17,12 +17,10 @@ class Parser:
             statements.append(self.declaration())
         return statements
 
-
     def _is_at_end(self):
         if self._peek().token_type != TokenType.EOF:
             return False
         return True
-
 
     def _match(self, *token_types):
         for token_type in token_types:
@@ -37,7 +35,7 @@ class Parser:
         if self._peek().token_type == token_type:
             return True
         return False
-        
+
     def _advance(self):
         token = self.tokens[self.current]
         self.current += 1
@@ -67,12 +65,19 @@ class Parser:
                 return
 
             match self._peek().token_type:
-                case TokenType.CLASS | TokenType.FUN | TokenType.VAR | TokenType.FOR | TokenType.IF | TokenType.WHILE | TokenType.PRINT | TokenType.RETURN:
+                case (
+                    TokenType.CLASS
+                    | TokenType.FUN
+                    | TokenType.VAR
+                    | TokenType.FOR
+                    | TokenType.IF
+                    | TokenType.WHILE
+                    | TokenType.PRINT
+                    | TokenType.RETURN
+                ):
                     return
 
             self._advance()
-
-                
 
     def _consume(self, token_type, message=None):
         if self._peek().token_type == token_type:
@@ -101,17 +106,39 @@ class Parser:
 
     def _var_declaration(self):
         name = self._consume(TokenType.IDENTIFIER, "Expect variable name.")
-        initializer: Expr = None
+        initializer: Expr | None = None
 
         if self._match(TokenType.EQUAL):
             initializer = self.expression()
         self._consume(TokenType.SEMICOLON, "Expect ';' after var declaration.")
         return Var(name, initializer)
 
+    def _while_statement(self):
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
+        condition: Expr = self.expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+        body: Stmt = self.statement()
+        return While(condition=condition, body=body)
+
+    def _if_statement(self):
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
+        condition = self.expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+
+        then_branch: Stmt = self.statement()
+        else_branch = None
+        if self._match(TokenType.ELSE):
+            else_branch = self.statement()
+
+        return If(condition=condition, then_branch=then_branch, else_branch=else_branch)
+
     def primary(self):
-        if self._match(TokenType.FALSE): return Literal(False)
-        if self._match(TokenType.TRUE): return Literal(True)
-        if self._match(TokenType.NIL): return Literal(None)
+        if self._match(TokenType.FALSE):
+            return Literal(False)
+        if self._match(TokenType.TRUE):
+            return Literal(True)
+        if self._match(TokenType.NIL):
+            return Literal(None)
 
         if self._match(TokenType.NUMBER, TokenType.STRING):
             return Literal(self._previous().literal)
@@ -155,8 +182,8 @@ class Parser:
             TokenType.GREATER,
             TokenType.GREATER_EQUAL,
             TokenType.LESS,
-            TokenType.LESS_EQUAL
-            ):
+            TokenType.LESS_EQUAL,
+        ):
             operator = self._previous()
             right = self.term()
             expr = Binary(expr, operator, right)
@@ -171,7 +198,7 @@ class Parser:
         return expr
 
     def assignment(self):
-        expr = self.equality()
+        expr = self._or()
 
         if self._match(TokenType.EQUAL):
             equals = self._previous()
@@ -183,16 +210,71 @@ class Parser:
             self._error(equals, "Invalid assignment target.")
         return expr
 
+    def _or(self):
+        expr = self._and()
+
+        while self._match(TokenType.OR):
+            operator: Token = self._previous()
+            right: Expr = self._and()
+            expr = Logical(expr, operator, right)
+        return expr
+
+    def _and(self):
+        expr = self.equality()
+
+        while self._match(TokenType.AND):
+            operator: Token = self._previous()
+            right: Expr = self.equality()
+            expr = Logical(expr, operator, right)
+        return expr
+
     def expression(self):
         return self.assignment()
 
     def statement(self):
-        if self._match(TokenType.PRINT): 
+        if self._match(TokenType.FOR):
+            return self._for_statement()
+        if self._match(TokenType.IF):
+            return self._if_statement()
+        if self._match(TokenType.WHILE):
+            return self._while_statement()
+        if self._match(TokenType.PRINT):
             return self._print_statement()
-        if self._match(TokenType.LEFT_BRACE): 
+        if self._match(TokenType.LEFT_BRACE):
             return Block(self._block())
 
         return self._expression_statement()
+
+    def _for_statement(self):
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
+        if self._match(TokenType.SEMICOLON):
+            initializer = None
+        elif self._match(TokenType.VAR):
+            initializer = self._var_declaration()
+        else:
+            initializer = self._expression_statement()
+
+        condition = None
+        if not self._check(TokenType.SEMICOLON):
+            condition = self.expression()
+        self._consume(TokenType.SEMICOLON)
+
+        increment: Expr | None = None
+        if not self._check(TokenType.RIGHT_PAREN):
+            increment = self.expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+        body: Stmt = self.statement()
+
+        if increment is not None:
+            body = Block([body, Expression(increment)])
+
+        if condition is None:
+            condition = Literal(True)
+        body = While(condition=condition, body=body)
+
+        if initializer is not None:
+            body = Block([initializer, body])
+        return body
 
     def declaration(self):
         try:
@@ -202,6 +284,3 @@ class Parser:
         except self.ParseError as e:
             self._synchronize()
             return None
-
-
-
