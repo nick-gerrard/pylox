@@ -281,6 +281,6 @@ class Parser:
             if self._match(TokenType.VAR):
                 return self._var_declaration()
             return self.statement()
-        except self.ParseError as e:
+        except self.ParseError:
             self._synchronize()
             return None

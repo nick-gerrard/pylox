@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pylox.expr import Expr
 from pylox.token import Token
-from typing import Any, List
+from typing import List
 
 
 class Stmt:
